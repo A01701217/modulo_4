@@ -9,147 +9,143 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from scipy.signal import butter, filtfilt
 
 
-class AudioProcessor:
+class AudioApp:
     def __init__(self, master):
+        # Título y tamaño de la ventana
         master.title("Procesador de Audio")
         master.geometry("800x600")
 
-        # Variables para almacenar datos de audio
-        self.audio_data = None
-        self.sample_rate = None
-        self.filtered_data = None
+        # Inicializo variables
+        self.data = None  # aquí guardo la señal cargada
+        self.filtered = None  # aquí guardaré la señal filtrada
+        self.fs = None  # frecuencia de muestreo
 
-        # Frame superior con botones
-        btn_frame = tk.Frame(master)
-        btn_frame.pack(side="top", fill="x", padx=5, pady=5)
-        tk.Button(btn_frame, text="Cargar", command=self.load_audio).pack(
-            side="left", padx=5
-        )
-        tk.Button(btn_frame, text="Aplicar Filtro", command=self.apply_filter).pack(
-            side="left", padx=5
-        )
-        tk.Button(btn_frame, text="Resetear", command=self.reset).pack(
-            side="left", padx=5
-        )
-        tk.Button(btn_frame, text="Guardar", command=self.save_audio).pack(
-            side="left", padx=5
-        )
+        # Creo un frame para los botones de acción
+        frm = tk.Frame(master)
+        frm.pack(padx=5, pady=5, fill="x")
+        # Botones
+        for txt, cmd in [
+            ("Cargar", self.load),
+            ("Filtro", self.apply_filter),
+            ("Reset", self.reset),
+            ("Guardar", self.save),
+        ]:
+            tk.Button(frm, text=txt, command=cmd).pack(side="left", padx=4)
 
-        # Figura para la gráfica de la señal y la FFT (dos subgráficas)
-        self.fig, (self.ax_wave, self.ax_fft) = plt.subplots(2, 1, figsize=(8, 6))
+        # Área para las dos gráficas: tiempo y frecuencia
+        self.fig, (self.ax_w, self.ax_f) = plt.subplots(2, 1, figsize=(8, 6))
         self.canvas = FigureCanvasTkAgg(self.fig, master)
-        self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
+        self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
-    def load_audio(self):
-        """Carga un archivo de audio y dibuja la señal original junto con su FFT."""
-        file_path = filedialog.askopenfilename(
-            title="Seleccione un archivo de audio",
-            filetypes=[
-                ("Audio files", "*.wav *.mp3 *.aac"),
-                ("Todos los archivos", "*.*"),
-            ],
+    def load(self):
+        # seleccionar archivo de audio, carga con librosa y dibuja la señal original.
+
+        path = filedialog.askopenfilename(
+            filetypes=[("Audio", "*.wav *.mp3"), ("Todos", "*.*")]
         )
-        if file_path:
-            try:
-                self.audio_data, self.sample_rate = librosa.load(file_path, sr=None)
-                self.filtered_data = None  # Reinicia cualquier filtrado previo
-                self.plot_audio(self.audio_data, "Señal Original")
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo cargar el archivo:\n{e}")
+        if not path:
+            return
+        try:
+            #  devuelve un ndarray y la frecuencia de muestreo
+            self.data, self.fs = librosa.load(path, sr=None)
+        except Exception as e:
+            return messagebox.showerror("Error al cargar", e)
 
-    def plot_audio(self, data, title_wave):
-        """Dibuja la señal en el tiempo y su FFT en la misma figura."""
-        self.ax_wave.clear()
-        self.ax_fft.clear()
+        self.filtered = None  # reinicio cualquier filtrado previo
+        self._plot()  # dibujo la señal cargada
 
-        # Señal en el dominio del tiempo
-        t = np.arange(len(data)) / self.sample_rate
-        self.ax_wave.plot(t, data)
-        self.ax_wave.set_title(title_wave)
-        self.ax_wave.set_xlabel("Tiempo (s)")
-        self.ax_wave.set_ylabel("Amplitud")
+    def _plot(self):
+        # señal en el dominio del tiempo y su FFT.
 
-        # Cálculo y gráfica de la FFT (solo frecuencias positivas)
-        fft_vals = np.fft.fft(data)
-        freqs = np.fft.fftfreq(len(data), 1 / self.sample_rate)
-        mask = freqs >= 0
-        self.ax_fft.plot(freqs[mask], np.abs(fft_vals)[mask])
-        self.ax_fft.set_title("FFT")
-        self.ax_fft.set_xlabel("Frecuencia (Hz)")
-        self.ax_fft.set_ylabel("Magnitud")
+        # Tiempo en segundos para el eje x
+        t = np.arange(len(self.data)) / self.fs
+        # resetear gráfica de tiempo
+        self.ax_w.clear()
+        if self.filtered is None:
+            #  original en azul
+            self.ax_w.plot(t, self.data, label="Original", color="blue")
+        else:
+            # Original abajp y señal filtrada en naranja
+            self.ax_w.plot(t, self.data, label="Original", color="blue", alpha=0.5)
+            self.ax_w.plot(
+                t, self.filtered, label="Filtrado", color="orange", alpha=0.8
+            )
+        self.ax_w.set(
+            title="Señal en el tiempo", xlabel="Tiempo (s)", ylabel="Amplitud"
+        )
+        self.ax_w.legend()
 
+        # resetear gráfica de frecuencia
+        self.ax_f.clear()
+        # FFT de la señal original
+        X = np.fft.rfft(self.data)
+        f = np.fft.rfftfreq(len(self.data), 1 / self.fs)
+        self.ax_f.plot(f, np.abs(X), label="FFT Original", color="blue", alpha=0.5)
+        # FFT de la señal filtrada
+        if self.filtered is not None:
+            Y = np.fft.rfft(self.filtered)
+            self.ax_f.plot(
+                f, np.abs(Y), label="FFT Filtrado", color="orange", alpha=0.8
+            )
+
+        self.ax_f.set(title="FFT", xlabel="Frecuencia (Hz)", ylabel="Magnitud")
+        self.ax_f.legend()
+
+        # Ajuste de espacios y dibujar
         self.fig.tight_layout()
         self.canvas.draw()
 
     def apply_filter(self):
-        """
-        Pide los parámetros del filtro y aplica un filtro Butterworth
-        a la señal cargada.
-        """
-        if self.audio_data is None:
-            messagebox.showwarning("Advertencia", "Primero cargue un archivo de audio.")
+        # Pide  tipo de filtro y parámetros, aplica Butterworth.
+
+        if self.data is None:
+            return messagebox.showwarning("Aviso", "Primero cargue audio")
+        # Tipo de filtro: low, high o band
+        tp = simpledialog.askstring("Tipo", "low, high o band:")
+        if not tp:
+            return
+        # Frecuencia de corte y orden
+        c1 = simpledialog.askfloat("Corte", "Frecuencia de corte (Hz):")
+        o = simpledialog.askinteger("Orden", "Orden del filtro:")
+        if None in (c1, o):
             return
 
-        # Solicitar al usuario el tipo de filtro: low, high o band
-        filter_type = simpledialog.askstring(
-            "Filtro", "Tipo de Filtro (low, high, band):"
-        )
-        if not filter_type:
-            return
+        # Normalización para la función butter
+        wn = c1 / (self.fs / 2)
+        if tp.lower() == "band":
+            # Si es banda, pido segunda frecuencia
+            c2 = simpledialog.askfloat("Corte 2", "Frecuencia de corte 2 (Hz):")
+            if c2 is None:
+                return
+            wn = sorted([c1, c2])
+            wn = [w / (self.fs / 2) for w in wn]
 
-        # Solicitar la frecuencia de corte (en Hz) y el orden del filtro
-        cutoff = simpledialog.askfloat(
-            "Frecuencia de corte", "Frecuencia de corte (Hz):"
-        )
-        order = simpledialog.askinteger("Orden", "Orden del filtro:")
-        if cutoff is None or order is None:
-            return
-
-        nyquist = self.sample_rate / 2
-        try:
-            if filter_type.lower() == "band":
-                # Para un filtro de banda se solicitan dos frecuencias de corte
-                cutoff2 = simpledialog.askfloat(
-                    "Frecuencia de corte 2", "Frecuencia de corte 2 (Hz):"
-                )
-                if cutoff2 is None:
-                    return
-                wn = [min(cutoff, cutoff2) / nyquist, max(cutoff, cutoff2) / nyquist]
-            else:
-                wn = cutoff / nyquist
-
-            b, a = butter(order, wn, btype=filter_type.lower())
-            self.filtered_data = filtfilt(b, a, self.audio_data)
-            self.plot_audio(self.filtered_data, f"Señal Filtrada ({filter_type})")
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al aplicar filtro:\n{e}")
+        # Diseño y aplicación del filtro
+        b, a = butter(o, wn, btype=tp.lower())
+        self.filtered = filtfilt(b, a, self.data)
+        self._plot()  # actualizo gráficas
 
     def reset(self):
-        """Vuelve a mostrar la señal original y elimina el filtrado."""
-        if self.audio_data is None:
-            return
-        self.filtered_data = None
-        self.plot_audio(self.audio_data, "Señal Original")
+        # Vuelve a la señal original sin filtro aplicado.
+        if self.data is not None:
+            self.filtered = None
+            self._plot()
 
-    def save_audio(self):
-        """Guarda la señal filtrada en un archivo WAV."""
-        if self.filtered_data is None:
-            messagebox.showwarning("Advertencia", "No hay audio filtrado para guardar.")
+    def save(self):
+        # Guarda la señal filtrada en un WAV si está disponible.
+        if self.filtered is None:
+            return messagebox.showwarning("Aviso", "No hay audio filtrado")
+        p = filedialog.asksaveasfilename(defaultextension=".wav")
+        if not p:
             return
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".wav",
-            filetypes=[("Archivo WAV", "*.wav")],
-            title="Guardar audio filtrado",
-        )
-        if file_path:
-            try:
-                sf.write(file_path, self.filtered_data, self.sample_rate)
-                messagebox.showinfo("Guardado", "Archivo guardado correctamente.")
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo guardar el archivo:\n{e}")
+        try:
+            sf.write(p, self.filtered, self.fs)  # guardo el archivo
+            messagebox.showinfo("Guardado", "Archivo guardado correctamente")
+        except Exception as e:
+            messagebox.showerror("Error al guardar", e)
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = AudioProcessor(root)
+    AudioApp(root)
     root.mainloop()
