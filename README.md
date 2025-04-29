@@ -1,6 +1,7 @@
 # modulo_4
 M4_Interacción_inteligente_H_S
-Manual : Procesador de Audio – Minimal con Overlay
+Manual : Procesador de Audio Version7.py
+
 1.	Inicio de la aplicación
   o	Ejecuta el script y se abrirá la ventana principal.
   o	Verás dos gráficas: la superior muestra la señal en el tiempo y la inferior la FFT de la señal original (en azul).
