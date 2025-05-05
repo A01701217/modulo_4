@@ -1,5 +1,7 @@
 # modulo_4
 M4_Interacción_inteligente_H_S
+
+
 Manual : Procesador de Audio Version7.py
 
 1.	Inicio de la aplicación
